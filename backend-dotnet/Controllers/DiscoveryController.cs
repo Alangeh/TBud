@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using MongoDB.Driver;
+using Microsoft.EntityFrameworkCore;
 using TravelReview.Api.Services;
 
 namespace TravelReview.Api.Controllers;
@@ -8,8 +8,8 @@ namespace TravelReview.Api.Controllers;
 [Route("api")]
 public class DiscoveryController : ControllerBase
 {
-    private readonly MongoContext _db;
-    public DiscoveryController(MongoContext db) { _db = db; }
+    private readonly AppDbContext _db;
+    public DiscoveryController(AppDbContext db) { _db = db; }
 
     [HttpGet("/")]
     [HttpGet("")]
@@ -18,49 +18,47 @@ public class DiscoveryController : ControllerBase
     [HttpGet("countries")]
     public async Task<IActionResult> Countries(CancellationToken ct)
     {
-        var items = await _db.Countries.Find(FilterDefinition<CountryDoc>.Empty).ToListAsync(ct);
-        items.ForEach(i => i._id = null);
+        var items = await _db.Countries.AsNoTracking().ToListAsync(ct);
         return Ok(new { countries = items });
     }
 
     [HttpGet("countries/{country_id}/cities")]
     public async Task<IActionResult> Cities(string country_id, CancellationToken ct)
     {
-        var items = await _db.Cities.Find(c => c.country_id == country_id).ToListAsync(ct);
-        items.ForEach(i => i._id = null);
+        var items = await _db.Cities.AsNoTracking().Where(c => c.country_id == country_id).ToListAsync(ct);
         return Ok(new { cities = items });
     }
 
     [HttpGet("cities/{city_id}/places")]
     public async Task<IActionResult> Places(string city_id, [FromQuery] string? category, CancellationToken ct)
     {
-        var filter = Builders<PlaceDoc>.Filter.Eq(p => p.city_id, city_id);
-        if (!string.IsNullOrEmpty(category)) filter &= Builders<PlaceDoc>.Filter.Eq(p => p.category, category);
-        var items = await _db.Places.Find(filter).ToListAsync(ct);
-        items.ForEach(i => i._id = null);
+        var q = _db.Places.AsNoTracking().Where(p => p.city_id == city_id);
+        if (!string.IsNullOrEmpty(category)) q = q.Where(p => p.category == category);
+        var items = await q.ToListAsync(ct);
         return Ok(new { places = items });
     }
 
     [HttpGet("places/{place_id}")]
     public async Task<IActionResult> Place(string place_id, CancellationToken ct)
     {
-        var p = await _db.Places.Find(x => x.place_id == place_id).FirstOrDefaultAsync(ct);
+        var p = await _db.Places.AsNoTracking().FirstOrDefaultAsync(x => x.place_id == place_id, ct);
         if (p is null) return NotFound(new { detail = "Place not found" });
-        var city = await _db.Cities.Find(c => c.city_id == p.city_id).FirstOrDefaultAsync(ct);
-        var country = string.IsNullOrEmpty(p.country_id) ? null : await _db.Countries.Find(c => c.country_id == p.country_id).FirstOrDefaultAsync(ct);
-        p._id = null; if (city is not null) city._id = null; if (country is not null) country._id = null;
+        var city = await _db.Cities.AsNoTracking().FirstOrDefaultAsync(c => c.city_id == p.city_id, ct);
+        var country = string.IsNullOrEmpty(p.country_id)
+            ? null
+            : await _db.Countries.AsNoTracking().FirstOrDefaultAsync(c => c.country_id == p.country_id, ct);
         return Ok(new { place = p, city, country });
     }
 
     [HttpGet("search")]
     public async Task<IActionResult> Search([FromQuery] string q, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(q)) return Ok(new { places = Array.Empty<object>(), cities = Array.Empty<object>(), countries = Array.Empty<object>() });
-        var rx = new MongoDB.Bson.BsonRegularExpression(q.Trim(), "i");
-        var places = await _db.Places.Find(Builders<PlaceDoc>.Filter.Regex(p => p.name, rx)).Limit(20).ToListAsync(ct);
-        var cities = await _db.Cities.Find(Builders<CityDoc>.Filter.Regex(c => c.name, rx)).Limit(20).ToListAsync(ct);
-        var countries = await _db.Countries.Find(Builders<CountryDoc>.Filter.Regex(c => c.name, rx)).Limit(20).ToListAsync(ct);
-        places.ForEach(i => i._id = null); cities.ForEach(i => i._id = null); countries.ForEach(i => i._id = null);
+        if (string.IsNullOrWhiteSpace(q))
+            return Ok(new { places = Array.Empty<object>(), cities = Array.Empty<object>(), countries = Array.Empty<object>() });
+        var term = $"%{q.Trim()}%";
+        var places = await _db.Places.AsNoTracking().Where(p => EF.Functions.Like(p.name, term)).Take(20).ToListAsync(ct);
+        var cities = await _db.Cities.AsNoTracking().Where(c => EF.Functions.Like(c.name, term)).Take(20).ToListAsync(ct);
+        var countries = await _db.Countries.AsNoTracking().Where(c => EF.Functions.Like(c.name, term)).Take(20).ToListAsync(ct);
         return Ok(new { places, cities, countries });
     }
 }

@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using MongoDB.Driver;
+using Microsoft.EntityFrameworkCore;
 using TravelReview.Api.Services;
 
 namespace TravelReview.Api.Controllers;
@@ -8,18 +8,21 @@ namespace TravelReview.Api.Controllers;
 [Route("api")]
 public class ReviewsController : ControllerBase
 {
-    private readonly MongoContext _db;
+    private readonly AppDbContext _db;
     private readonly AuthService _auth;
-    public ReviewsController(MongoContext db, AuthService auth) { _db = db; _auth = auth; }
+    public ReviewsController(AppDbContext db, AuthService auth) { _db = db; _auth = auth; }
 
     [HttpGet("places/{place_id}/reviews")]
     public async Task<IActionResult> ForPlace(string place_id, CancellationToken ct)
     {
-        var items = await _db.Reviews.Find(r => r.place_id == place_id)
-            .SortByDescending(r => r.created_at).ToListAsync(ct);
+        var items = await _db.Reviews.AsNoTracking()
+            .Where(r => r.place_id == place_id)
+            .OrderByDescending(r => r.created_at)
+            .ToListAsync(ct);
         var uids = items.Select(r => r.user_id).Distinct().ToList();
-        var users = uids.Count == 0 ? new List<UserDoc>()
-            : await _db.Users.Find(u => uids.Contains(u.user_id)).ToListAsync(ct);
+        var users = uids.Count == 0
+            ? new List<UserDoc>()
+            : await _db.Users.AsNoTracking().Where(u => uids.Contains(u.user_id)).ToListAsync(ct);
         var umap = users.ToDictionary(u => u.user_id);
         var enriched = items.Select(r => new {
             r.review_id, r.place_id, r.user_id, r.rating, r.text, r.photos,
@@ -36,7 +39,7 @@ public class ReviewsController : ControllerBase
     {
         var user = await _auth.ResolveAsync(authorization, ct);
         if (user is null) return Unauthorized(new { detail = "Invalid token" });
-        var place = await _db.Places.Find(p => p.place_id == body.Place_id).FirstOrDefaultAsync(ct);
+        var place = await _db.Places.FirstOrDefaultAsync(p => p.place_id == body.Place_id, ct);
         if (place is null) return NotFound(new { detail = "Place not found" });
 
         var doc = new ReviewDoc {
@@ -45,21 +48,23 @@ public class ReviewsController : ControllerBase
             user_id = user.user_id, rating = body.Rating, text = body.Text,
             photos = (body.Photos ?? new()).Take(10).ToList(),
         };
-        await _db.Reviews.InsertOneAsync(doc, cancellationToken: ct);
+        _db.Reviews.Add(doc);
 
-        // Recompute place aggregate
-        var all = await _db.Reviews.Find(r => r.place_id == body.Place_id).ToListAsync(ct);
-        var avg = all.Count == 0 ? 0 : Math.Round(all.Average(r => r.rating), 2);
-        await _db.Places.UpdateOneAsync(p => p.place_id == body.Place_id,
-            Builders<PlaceDoc>.Update.Set(p => p.rating, avg).Set(p => p.review_count, all.Count), cancellationToken: ct);
+        // Recompute place aggregate (include the new review's rating).
+        var existing = await _db.Reviews.Where(r => r.place_id == body.Place_id)
+            .Select(r => (int?)r.rating).ToListAsync(ct);
+        existing.Add(body.Rating);
+        place.rating = existing.Count == 0 ? 0 : Math.Round(existing.Average(x => x!.Value), 2);
+        place.review_count = existing.Count;
 
-        // Bump user stats
-        var userUpdate = Builders<UserDoc>.Update.Inc(u => u.review_count, 1);
+        // Bump user stats.
+        user.review_count += 1;
         if (!string.IsNullOrEmpty(place.country_id) && !user.countries_visited.Contains(place.country_id))
-            userUpdate = userUpdate.AddToSet(u => u.countries_visited, place.country_id);
-        await _db.Users.UpdateOneAsync(u => u.user_id == user.user_id, userUpdate, cancellationToken: ct);
+        {
+            user.countries_visited = user.countries_visited.Append(place.country_id).ToList();
+        }
 
-        doc._id = null;
+        await _db.SaveChangesAsync(ct);
         return Ok(new {
             review = new {
                 doc.review_id, doc.place_id, doc.user_id, doc.rating, doc.text, doc.photos,
@@ -74,22 +79,22 @@ public class ReviewsController : ControllerBase
     {
         var user = await _auth.ResolveAsync(authorization, ct);
         if (user is null) return Unauthorized(new { detail = "Invalid token" });
-        var rev = await _db.Reviews.Find(r => r.review_id == review_id).FirstOrDefaultAsync(ct);
+        var rev = await _db.Reviews.FirstOrDefaultAsync(r => r.review_id == review_id, ct);
         if (rev is null) return NotFound(new { detail = "Review not found" });
         bool voted;
         if (rev.helpful_voters.Contains(user.user_id))
         {
-            await _db.Reviews.UpdateOneAsync(r => r.review_id == review_id,
-                Builders<ReviewDoc>.Update.Inc(r => r.helpful_count, -1).Pull(r => r.helpful_voters, user.user_id), cancellationToken: ct);
+            rev.helpful_voters = rev.helpful_voters.Where(v => v != user.user_id).ToList();
+            rev.helpful_count = Math.Max(0, rev.helpful_count - 1);
             voted = false;
         }
         else
         {
-            await _db.Reviews.UpdateOneAsync(r => r.review_id == review_id,
-                Builders<ReviewDoc>.Update.Inc(r => r.helpful_count, 1).AddToSet(r => r.helpful_voters, user.user_id), cancellationToken: ct);
+            rev.helpful_voters = rev.helpful_voters.Append(user.user_id).ToList();
+            rev.helpful_count += 1;
             voted = true;
         }
-        var fresh = await _db.Reviews.Find(r => r.review_id == review_id).FirstAsync(ct);
-        return Ok(new { helpful_count = fresh.helpful_count, voted });
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { helpful_count = rev.helpful_count, voted });
     }
 }

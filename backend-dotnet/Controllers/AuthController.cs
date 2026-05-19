@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using MongoDB.Driver;
+using Microsoft.EntityFrameworkCore;
 using TravelReview.Api.Services;
 
 namespace TravelReview.Api.Controllers;
@@ -8,21 +8,22 @@ namespace TravelReview.Api.Controllers;
 [Route("api/auth")]
 public class AuthController : ControllerBase
 {
-    private readonly MongoContext _db;
+    private readonly AppDbContext _db;
     private readonly AuthService _auth;
-    public AuthController(MongoContext db, AuthService auth) { _db = db; _auth = auth; }
+    public AuthController(AppDbContext db, AuthService auth) { _db = db; _auth = auth; }
 
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterIn body, CancellationToken ct)
     {
         var email = body.Email.ToLowerInvariant();
-        var existing = await _db.Users.Find(u => u.email == email).FirstOrDefaultAsync(ct);
-        if (existing is not null) return BadRequest(new { detail = "Email already registered" });
+        if (await _db.Users.AnyAsync(u => u.email == email, ct))
+            return BadRequest(new { detail = "Email already registered" });
         var user = new UserDoc {
             user_id = AuthService.MakeId("usr"), email = email, name = body.Name,
             password_hash = AuthService.Hash(body.Password), auth_provider = "email",
         };
-        await _db.Users.InsertOneAsync(user, cancellationToken: ct);
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync(ct);
         return Ok(new { token = _auth.IssueJwt(user.user_id), user = PublicUser.From(user) });
     }
 
@@ -30,7 +31,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Login([FromBody] LoginIn body, CancellationToken ct)
     {
         var email = body.Email.ToLowerInvariant();
-        var user = await _db.Users.Find(u => u.email == email).FirstOrDefaultAsync(ct);
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.email == email, ct);
         if (user is null || !AuthService.Check(body.Password, user.password_hash))
             return Unauthorized(new { detail = "Invalid email or password" });
         return Ok(new { token = _auth.IssueJwt(user.user_id), user = PublicUser.From(user) });
@@ -58,7 +59,12 @@ public class AuthController : ControllerBase
         if (!string.IsNullOrEmpty(authorization) && authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
             var token = authorization["Bearer ".Length..].Trim();
-            await _db.Sessions.DeleteOneAsync(s => s.session_token == token, ct);
+            var sess = await _db.Sessions.FirstOrDefaultAsync(s => s.session_token == token, ct);
+            if (sess is not null)
+            {
+                _db.Sessions.Remove(sess);
+                await _db.SaveChangesAsync(ct);
+            }
         }
         return Ok(new { ok = true });
     }
@@ -68,12 +74,10 @@ public class AuthController : ControllerBase
     {
         var user = await _auth.ResolveAsync(authorization, ct);
         if (user is null) return Unauthorized(new { detail = "Invalid token" });
-        var update = Builders<UserDoc>.Update
-            .Set(u => u.verified, true)
-            .Set(u => u.kyc_document_type, body.Document_type)
-            .Set(u => u.kyc_submitted_at, DateTime.UtcNow);
-        await _db.Users.UpdateOneAsync(u => u.user_id == user.user_id, update, cancellationToken: ct);
         user.verified = true;
+        user.kyc_document_type = body.Document_type;
+        user.kyc_submitted_at = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
         return Ok(new { user = PublicUser.From(user) });
     }
 
@@ -82,13 +86,9 @@ public class AuthController : ControllerBase
     {
         var user = await _auth.ResolveAsync(authorization, ct);
         if (user is null) return Unauthorized(new { detail = "Invalid token" });
-        var updateBuilder = Builders<UserDoc>.Update.Combine();
-        var sets = new List<UpdateDefinition<UserDoc>>();
-        if (!string.IsNullOrEmpty(body.Name)) sets.Add(Builders<UserDoc>.Update.Set(u => u.name, body.Name));
-        if (body.Bio is not null) sets.Add(Builders<UserDoc>.Update.Set(u => u.bio, body.Bio));
-        if (sets.Count > 0)
-            await _db.Users.UpdateOneAsync(u => u.user_id == user.user_id, Builders<UserDoc>.Update.Combine(sets), cancellationToken: ct);
-        var fresh = await _db.Users.Find(u => u.user_id == user.user_id).FirstAsync(ct);
-        return Ok(new { user = PublicUser.From(fresh) });
+        if (!string.IsNullOrEmpty(body.Name)) user.name = body.Name;
+        if (body.Bio is not null) user.bio = body.Bio;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { user = PublicUser.From(user) });
     }
 }

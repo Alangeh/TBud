@@ -1,28 +1,31 @@
-using MongoDB.Driver;
+using Microsoft.EntityFrameworkCore;
 
 namespace TravelReview.Api.Services;
 
 public class SeedService
 {
-    private readonly MongoContext _db;
+    private readonly AppDbContext _db;
     private readonly ILogger<SeedService> _log;
-    public SeedService(MongoContext db, ILogger<SeedService> log) { _db = db; _log = log; }
+    public SeedService(AppDbContext db, ILogger<SeedService> log) { _db = db; _log = log; }
 
     public async Task RunAsync()
     {
-        if (await _db.Countries.CountDocumentsAsync(FilterDefinition<CountryDoc>.Empty) == 0)
+        if (!await _db.Countries.AnyAsync())
         {
-            await _db.Countries.InsertManyAsync(Countries);
+            _db.Countries.AddRange(Countries);
+            await _db.SaveChangesAsync();
             _log.LogInformation("Seeded {N} countries", Countries.Count);
         }
-        if (await _db.Cities.CountDocumentsAsync(FilterDefinition<CityDoc>.Empty) == 0)
+        if (!await _db.Cities.AnyAsync())
         {
-            await _db.Cities.InsertManyAsync(Cities);
+            _db.Cities.AddRange(Cities);
+            await _db.SaveChangesAsync();
             _log.LogInformation("Seeded {N} cities", Cities.Count);
         }
-        if (await _db.Places.CountDocumentsAsync(FilterDefinition<PlaceDoc>.Empty) == 0)
+        if (!await _db.Places.AnyAsync())
         {
-            await _db.Places.InsertManyAsync(Places);
+            _db.Places.AddRange(Places);
+            await _db.SaveChangesAsync();
             _log.LogInformation("Seeded {N} places", Places.Count);
         }
     }

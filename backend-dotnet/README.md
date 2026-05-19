@@ -1,26 +1,63 @@
-# TravelReview API — .NET 8
+# TravelReview API — .NET 8 + SQL Server
 
-Drop-in replacement for the FastAPI backend. Same routes, same JSON shapes — your Expo frontend talks to it unchanged.
+Drop-in replacement for the FastAPI/Mongo backend. Same routes, same JSON shapes — your Expo frontend talks to it unchanged.
 
 ## Stack
-- .NET 8 Web API (Controllers)
-- MongoDB.Driver 2.x
+- **.NET 8** Web API (Controllers)
+- **SQL Server** via **Entity Framework Core 8** (Microsoft.EntityFrameworkCore.SqlServer)
+- **EF Core Migrations** for versioned schema
 - BCrypt.Net-Next (password hashing)
 - System.IdentityModel.Tokens.Jwt (JWT)
 - DotNetEnv (loads `.env` like python-dotenv)
 
 ## Prerequisites
 - .NET 8 SDK — https://dotnet.microsoft.com/download
-- MongoDB 6+ running locally (or a connection string to one)
+- SQL Server (any of):
+  - SQL Server Developer Edition / Express (Windows)
+  - Docker: `docker run -e "ACCEPT_EULA=Y" -e "MSSQL_SA_PASSWORD=YourStrong!Passw0rd" -p 1433:1433 -d mcr.microsoft.com/mssql/server:2022-latest`
+  - SQL Server on macOS via Docker as above (works on Apple Silicon with `--platform linux/amd64` or the `azure-sql-edge` image)
+- EF Core CLI tools (one-time): `dotnet tool install --global dotnet-ef`
 
-## Run
+## Configuration
+Everything is in **`appsettings.json`** — copy/edit the values you need. Real secrets should come from environment variables or User Secrets and override the file.
+
+```json
+{
+  "ConnectionStrings": {
+    "Default": "Server=localhost,1433;Database=TravelReview;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;MultipleActiveResultSets=true;"
+  },
+  "Jwt": {
+    "Secret": "travelreview-dev-secret-change-me-please-32chars",
+    "ExpiresDays": 7,
+    "Issuer": "travelreview-api",
+    "Audience": "travelreview-app"
+  },
+  "Emergent": { "SessionDataUrl": "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data" },
+  "Cors": { "AllowedOrigins": [ "*" ] },
+  "Migrations": { "ApplyOnStartup": true, "SeedOnStartup": true },
+  "Kestrel": { "Endpoints": { "Http": { "Url": "http://0.0.0.0:8001" } } }
+}
+```
+
+Env-var overrides (take priority over `appsettings.json`):
+- `CONNECTION_STRING` — full SQL Server connection string
+- `JWT_SECRET` — 32+ char random string
+
+## First-time setup
 ```bash
 cd backend-dotnet
-cp .env.example .env          # then edit JWT_SECRET
+cp .env.example .env                              # edit JWT_SECRET (and CONNECTION_STRING if needed)
 dotnet restore
-dotnet run
+dotnet ef migrations add Initial                  # one-time: scaffold the Migrations/ folder
+dotnet run                                        # auto-applies migrations + seeds data on startup
 ```
-Server listens on `http://0.0.0.0:8001` (matches the Python service it replaces).
+Server listens on `http://0.0.0.0:8001`.
+
+Subsequent schema changes:
+```bash
+dotnet ef migrations add <Name>
+dotnet run                                        # Migrations:ApplyOnStartup=true picks it up
+```
 
 ## Endpoints (all under `/api`)
 Auth: `POST /auth/register`, `POST /auth/login`, `POST /auth/google/session`,
@@ -40,11 +77,11 @@ Users: `GET /users/{id}`, `GET /users/me/reviews`, `POST /users/{id}/follow`
 
 Both are accepted transparently — no flag on the frontend.
 
-## Notes
-- BSON `_id` is stripped from every response (matches the Python `{"_id": 0}` behaviour).
-- Session TTL index on `user_sessions.expires_at` purges expired Google sessions automatically.
-- Seed data (5 countries / 15 cities / 30 places) loads on first startup when collections are empty.
-- KYC is **mocked** — any uploaded image flips `verified=true`. Swap in Onfido / Stripe Identity for production.
+## Schema notes
+- String PKs (e.g. `usr_xxx`, `c_italy`, `p_eiffel`) preserve the original API's id convention.
+- `email` is uniquely indexed.
+- Collection fields (`countries_visited`, `following`, `photos`, `helpful_voters`) are persisted as JSON in `nvarchar(max)` columns via EF value converters — keeps schema simple and 1:1 with the document model.
+- Sessions don't have a TTL index (SQL Server doesn't support it natively). Expired sessions are filtered on read; add a cleanup job if needed.
 
 ## Frontend hookup (local dev)
 In `/frontend/.env`:
@@ -57,16 +94,16 @@ Then `yarn start` in `/frontend`.
 ```bash
 docker build -t travelreview-api .
 docker run --rm -p 8001:8001 \
-  -e MONGO_URL='mongodb://host.docker.internal:27017' \
-  -e DB_NAME='travelreview' \
+  -e CONNECTION_STRING='Server=host.docker.internal,1433;Database=TravelReview;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;' \
   -e JWT_SECRET='replace-me-32+chars' \
   travelreview-api
 ```
+Make sure your `Migrations/` folder is checked in **before** building — the running container applies them on startup.
 
 ## Tests (xUnit — 16 cases mirroring the Python pytest suite)
-Requires a local MongoDB running on the default port (or set `MONGO_URL`).
+Requires a running SQL Server reachable from the test process (defaults to the same connection string as the app, but spins up an isolated `TravelReview_Test_<guid>` database per run).
 ```bash
 cd tests
 dotnet test
 ```
-Each run uses an isolated `travelreview_test_<guid>` database that is dropped on completion — production data is never touched.
+Each run drops its test database on completion — production data is never touched.

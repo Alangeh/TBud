@@ -1,17 +1,17 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using MongoDB.Driver;
 
 namespace TravelReview.Api.Services;
 
 public class AuthService
 {
-    private readonly MongoContext _db;
+    private readonly AppDbContext _db;
     private readonly IConfiguration _cfg;
     private readonly IHttpClientFactory _http;
-    public AuthService(MongoContext db, IConfiguration cfg, IHttpClientFactory http) { _db = db; _cfg = cfg; _http = http; }
+    public AuthService(AppDbContext db, IConfiguration cfg, IHttpClientFactory http) { _db = db; _cfg = cfg; _http = http; }
 
     private string JwtSecret => Environment.GetEnvironmentVariable("JWT_SECRET") ?? _cfg["Jwt:Secret"]!;
     private int JwtDays => int.Parse(_cfg["Jwt:ExpiresDays"] ?? "7");
@@ -36,7 +36,7 @@ public class AuthService
             return null;
         var token = authorization["Bearer ".Length..].Trim();
 
-        // Try JWT
+        // JWT path
         try
         {
             var handler = new JwtSecurityTokenHandler();
@@ -48,15 +48,14 @@ public class AuthService
             }, out var validated);
             var jwt = (JwtSecurityToken)validated;
             var uid = jwt.Claims.First(c => c.Type == "user_id").Value;
-            return await _db.Users.Find(u => u.user_id == uid).FirstOrDefaultAsync(ct);
+            return await _db.Users.FirstOrDefaultAsync(u => u.user_id == uid, ct);
         }
         catch { /* fall through */ }
 
-        // Try Emergent session token stored in user_sessions
-        var sess = await _db.Sessions.Find(s => s.session_token == token).FirstOrDefaultAsync(ct);
-        if (sess is null) return null;
-        if (sess.expires_at < DateTime.UtcNow) return null;
-        return await _db.Users.Find(u => u.user_id == sess.user_id).FirstOrDefaultAsync(ct);
+        // Emergent session_token path
+        var sess = await _db.Sessions.FirstOrDefaultAsync(s => s.session_token == token, ct);
+        if (sess is null || sess.expires_at < DateTime.UtcNow) return null;
+        return await _db.Users.FirstOrDefaultAsync(u => u.user_id == sess.user_id, ct);
     }
 
     public async Task<(string sessionToken, UserDoc user)?> VerifyGoogleAsync(string sessionId, CancellationToken ct)
@@ -74,23 +73,31 @@ public class AuthService
         var sessionToken = data.GetValueOrDefault("session_token")?.ToString();
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(sessionToken)) return null;
 
-        var user = await _db.Users.Find(u => u.email == email).FirstOrDefaultAsync(ct);
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.email == email, ct);
         if (user is null)
         {
             user = new UserDoc {
                 user_id = MakeId("usr"), email = email, name = name ?? email.Split('@')[0],
                 picture = picture, password_hash = null, auth_provider = "google",
             };
-            await _db.Users.InsertOneAsync(user, cancellationToken: ct);
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync(ct);
         }
 
-        var filter = Builders<SessionDoc>.Filter.Eq(s => s.session_token, sessionToken);
-        var update = Builders<SessionDoc>.Update
-            .Set(s => s.session_token, sessionToken)
-            .Set(s => s.user_id, user.user_id)
-            .Set(s => s.expires_at, DateTime.UtcNow.AddDays(JwtDays))
-            .Set(s => s.created_at, DateTime.UtcNow);
-        await _db.Sessions.UpdateOneAsync(filter, update, new UpdateOptions { IsUpsert = true }, ct);
+        var existing = await _db.Sessions.FirstOrDefaultAsync(s => s.session_token == sessionToken, ct);
+        if (existing is null)
+        {
+            _db.Sessions.Add(new SessionDoc {
+                session_token = sessionToken, user_id = user.user_id,
+                expires_at = DateTime.UtcNow.AddDays(JwtDays), created_at = DateTime.UtcNow,
+            });
+        }
+        else
+        {
+            existing.user_id = user.user_id;
+            existing.expires_at = DateTime.UtcNow.AddDays(JwtDays);
+        }
+        await _db.SaveChangesAsync(ct);
         return (sessionToken, user);
     }
 }
