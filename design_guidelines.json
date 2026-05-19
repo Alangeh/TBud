@@ -1,0 +1,167 @@
+{
+  "theme": "LIGHT",
+  "archetype": "1 (Organic & Earthy)",
+  "design_philosophy": "Modern travel aesthetic — warm, photography-forward, sense of adventure and trust. Prioritizes immersive imagery, trust-building via verified badges, and simple discovery flows.",
+  "colors": {
+    "background": {
+      "primary": "#FAF9F6",
+      "secondary": "#F3F1ED",
+      "card": "#FFFFFF",
+      "overlay": "rgba(0, 0, 0, 0.4)"
+    },
+    "text": {
+      "primary": "#1A1A1A",
+      "secondary": "#5C5C5C",
+      "tertiary": "#8A8A8A",
+      "inverse": "#FFFFFF"
+    },
+    "accent": {
+      "primary": "#E07A5F",
+      "primary_hover": "#D36649",
+      "trust_verified": "#3D5A80",
+      "trust_verified_bg": "#EAF0F6",
+      "success": "#81B29A"
+    },
+    "border": {
+      "light": "#E5E3DB",
+      "focus": "#E07A5F"
+    }
+  },
+  "typography": {
+    "font_family": {
+      "heading": "Outfit, sans-serif",
+      "body": "Manrope, sans-serif"
+    },
+    "scale": {
+      "h1": "text-4xl tracking-tight font-bold",
+      "h2": "text-3xl tracking-tight font-semibold",
+      "h3": "text-2xl tracking-tight font-medium",
+      "h4": "text-xl font-medium",
+      "body_lg": "text-lg leading-relaxed",
+      "body": "text-base leading-relaxed",
+      "body_sm": "text-sm leading-normal",
+      "caption": "text-xs uppercase tracking-widest font-semibold"
+    }
+  },
+  "spacing_and_layout": {
+    "global_padding": "px-6",
+    "section_gap": "gap-8",
+    "item_gap": "gap-4",
+    "border_radius": {
+      "card": "rounded-3xl",
+      "button": "rounded-full",
+      "badge": "rounded-full",
+      "image": "rounded-2xl"
+    },
+    "shadows": {
+      "soft": "shadow-[0_8px_30px_rgb(0,0,0,0.04)]",
+      "floating": "shadow-[0_20px_40px_rgb(0,0,0,0.08)]"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#E07A5F] text-white rounded-full py-4 px-8 font-semibold flex items-center justify-center",
+      "secondary": "bg-white border border-[#E5E3DB] text-[#1A1A1A] rounded-full py-4 px-8 font-semibold flex items-center justify-center",
+      "ghost": "bg-transparent text-[#5C5C5C] font-medium"
+    },
+    "cards": {
+      "bento_item": "bg-white rounded-3xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-[#E5E3DB]",
+      "destination_card": "relative rounded-3xl overflow-hidden aspect-[4/5]"
+    },
+    "badges": {
+      "verified": "flex items-center gap-1 bg-[#EAF0F6] text-[#3D5A80] px-3 py-1 rounded-full text-xs font-semibold"
+    },
+    "inputs": {
+      "text": "bg-[#F3F1ED] rounded-xl px-4 py-4 text-[#1A1A1A] font-medium placeholder-[#8A8A8A] focus:border-[#E07A5F] border border-transparent"
+    }
+  },
+  "media": {
+    "icons_library": "lucide-react-native",
+    "image_urls": {
+      "hero_welcome": [
+        {
+          "url": "https://images.unsplash.com/photo-1527631615371-98cbbff5125a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHw0fHxwb3J0cmFpdCUyMHRyYXZlbGVyJTIwYmFja3BhY2t8ZW58MHx8fHwxNzc5MTg3MDI5fDA&ixlib=rb-4.1.0&q=85",
+          "description": "Traveler looking at calm body of water",
+          "category": "welcome_screen_background"
+        }
+      ],
+      "destinations": [
+        {
+          "url": "https://images.unsplash.com/photo-1626628193008-fa2852153d79?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHw0fHxpdGFseSUyMGFtYWxmaSUyMGNvYXN0fGVufDB8fHx8MTc3OTE4NzAyOHww&ixlib=rb-4.1.0&q=85",
+          "description": "Amalfi Coast, Italy",
+          "category": "country_explore_card"
+        },
+        {
+          "url": "https://images.pexels.com/photos/31376617/pexels-photo-31376617.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+          "description": "Tokyo Street Night",
+          "category": "country_explore_card"
+        }
+      ],
+      "places": [
+        {
+          "url": "https://images.pexels.com/photos/27626762/pexels-photo-27626762.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+          "description": "Modern Restaurant Interior",
+          "category": "place_detail_header"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1711059985570-4c32ed12a12c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1Mjh8MHwxfHNlYXJjaHwzfHxiZWF1dGlmdWwlMjBob3RlbCUyMHJvb218ZW58MHx8fHwxNzc5MTg3MDM0fDA&ixlib=rb-4.1.0&q=85",
+          "description": "Beautiful Hotel Room",
+          "category": "place_detail_header"
+        }
+      ],
+      "kyc": [
+        {
+          "url": "https://images.unsplash.com/photo-1454496406107-dc34337da8d6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2ODl8MHwxfHNlYXJjaHwyfHx2ZXJpZmllZCUyMHBhc3Nwb3J0JTIwaWQlMjB2ZXJpZmljYXRpb258ZW58MHx8fHwxNzc5MTg3MDM1fDA&ixlib=rb-4.1.0&q=85",
+          "description": "Passport booklet ID Verification",
+          "category": "kyc_placeholder_example"
+        }
+      ],
+      "avatars": [
+        {
+          "url": "https://images.pexels.com/photos/17862339/pexels-photo-17862339.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+          "description": "Traveler with backpack",
+          "category": "user_profile_avatar"
+        }
+      ]
+    }
+  },
+  "screens": {
+    "welcome": {
+      "layout": "Full bleed background image (hero_welcome) with dark gradient overlay at bottom. Content anchored to bottom.",
+      "components": ["Large H1 Title (Outfit)", "Social Login Buttons (rounded-full)", "Email Signup Button"]
+    },
+    "kyc_flow": {
+      "layout": "Step-by-step progress flow. High whitespace, trust-building copy.",
+      "components": ["Progress Bar", "Document Type Selector", "Camera Placeholder View", "Success Lottie/Animation"]
+    },
+    "explore_home": {
+      "layout": "Mobile-first scrolling layout. 'Bento' style grid for recommendations.",
+      "components": ["Header with User Avatar and Search Icon", "Horizontal Scroll 'Featured Destinations' (large cards)", "Vertical list for 'Trending Cities'"]
+    },
+    "place_detail": {
+      "layout": "Sticky header with image gallery. Content scrolls up over the image with a rounded-t-3xl border.",
+      "components": ["Image Carousel", "Place Title & Verified Badge", "Action Row (Save, Share, Map)", "Review Highlights", "Fixed Bottom CTA ('Write Review')"]
+    },
+    "write_review": {
+      "layout": "Clean, focused form. Keyboard-aware scroll view.",
+      "components": ["Interactive Star Rating (large)", "Multiline TextInput", "Photo Upload Grid (horizontal scroll)", "Submit Button"]
+    },
+    "profile": {
+      "layout": "Header with avatar and stats. Tabs for 'Reviews', 'Photos', 'Saved'.",
+      "components": ["Avatar (large, centered)", "Verified User Badge", "Follow/Edit Profile Button", "Masonry or Grid list of previous reviews"]
+    }
+  },
+  "testing": {
+    "attributes": "All interactive elements must include a 'testID' attribute in React Native (equivalent to data-testid) using kebab-case role-based naming (e.g., testID='login-submit-button')."
+  },
+  "instructions_to_main_agent": [
+    "Use React Native (Expo) with NativeWind for styling. Map the Tailwind classes provided in these guidelines to NativeWind's className attribute.",
+    "Implement navigation using Expo Router with a bottom tab navigator for the main screens: Explore, Search, Write Review (FAB style), Profile.",
+    "Always use the provided Unsplash/Pexels image URLs for placeholders. NEVER use via.placeholder.com or similar dummy services.",
+    "For the bottom tab bar, keep it clean with no background color (white) and a subtle top border. Use Terracotta (#E07A5F) for the active tab icon.",
+    "Ensure 'Outfit' font is used for headers and 'Manrope' for body copy. If custom fonts cannot be loaded quickly, fallback to system sans-serif but maintain font weights.",
+    "Keep shadows subtle. NativeWind shadows sometimes behave differently than web; prioritize 'elevation' on Android and subtle shadow opacity on iOS.",
+    "Test all clickable areas to be at least 44x44px for thumb-friendly mobile UI.",
+    "When applying gradient overlays to images, use expo-linear-gradient."
+  ]
+}
