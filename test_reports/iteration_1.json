@@ -1,0 +1,43 @@
+{
+  "summary": "TravelReview backend tested with 16 pytest cases covering discovery, auth, KYC, reviews, helpful toggle, and logout. All endpoints pass after fixing one critical _id-leak/500 bug in POST /api/reviews.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/reviews",
+        "issue": "FIXED. Endpoint returned 500 ValueError(\"'ObjectId' object is not iterable\") because motor's insert_one mutates the inserted dict by adding the BSON `_id`, and the handler then returned that same dict. Added `doc.pop('_id', None)` after insert_one. Now returns 200 with no _id leak.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_travelreview_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Review the same _id-mutation pattern elsewhere if new POST endpoints are added (motor mutates `doc` after insert_one). Currently only POST /api/reviews was affected; users/places/etc. either use upsert or re-read from DB.",
+    "Consider adding a Google OAuth happy-path test stub (currently only the 401-with-bogus-token case is covered; full e2e requires browser)."
+  ],
+  "critical_code_review_comments": [
+    "MongoDB _id was leaking through POST /api/reviews response (now fixed). All other endpoints correctly use projection {_id:0}.",
+    "server.py is 583 lines — approaching the 700-line guideline; consider splitting into routers (auth, discovery, reviews, social) for future maintainability.",
+    "JWT_SECRET has a hardcoded dev default ('travelreview-dev-secret-change-me'); fine for MVP but must be enforced from env in production.",
+    "create_review re-reads all reviews to compute avg rating — acceptable at MVP scale, but should use $inc + running average or aggregation pipeline at scale."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (added doc.pop('_id', None) after reviews.insert_one)",
+    "/app/backend/tests/test_travelreview_api.py (new pytest suite, 16 tests)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not tested (backend-only request)"},
+  "seed_data_creation": "No manual seed required. Backend auto-seeds 5 countries / 15 cities / 30 places on startup. Test user is created per-run with timestamped email test_<ts>@travelreview.app.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use EXPO_PUBLIC_BACKEND_URL from frontend/.env (note: var is EXPO_PUBLIC_BACKEND_URL, not EXPO_BACKEND_URL). Test suite at /app/backend/tests/test_travelreview_api.py runs end-to-end in ~2s and is order-dependent (uses module-scoped `state` dict for token/review_id). Demo account demo@travelreview.app/demo1234 is NOT seeded by backend — must be registered manually if needed; suite uses fresh timestamped email instead.",
+  "rca_of_issue": "Root cause of POST /api/reviews 500: motor's `collection.insert_one(doc)` mutates the passed dict in place by adding the generated BSON `_id`. The handler then returned that same dict, and FastAPI's jsonable_encoder hit `ObjectId` and raised TypeError. Reproduced by POSTing /api/reviews with a valid Bearer token. Mitigation applied: `doc.pop('_id', None)` immediately after insert_one. All 16 tests now green."
+}
