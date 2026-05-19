@@ -40,9 +40,30 @@ using (var scope = app.Services.CreateScope())
 {
     var sp = scope.ServiceProvider;
     var cfg = sp.GetRequiredService<IConfiguration>();
+    var log = sp.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
     var db = sp.GetRequiredService<AppDbContext>();
-    if (cfg.GetValue<bool>("Migrations:ApplyOnStartup")) await db.Database.MigrateAsync();
-    if (cfg.GetValue<bool>("Migrations:SeedOnStartup")) await sp.GetRequiredService<SeedService>().RunAsync();
+
+    if (cfg.GetValue<bool>("Migrations:ApplyOnStartup"))
+    {
+        // Prefer EF Core Migrations when the project has them scaffolded
+        // (`dotnet ef migrations add Initial`). Otherwise, fall back to
+        // EnsureCreatedAsync so first-time `docker compose up` users get a
+        // working schema without needing the .NET SDK installed locally.
+        var hasMigrations = db.Database.GetMigrations().Any();
+        if (hasMigrations)
+        {
+            log.LogInformation("Applying EF Core migrations...");
+            await db.Database.MigrateAsync();
+        }
+        else if (cfg.GetValue<bool>("Migrations:UseEnsureCreatedFallback", true))
+        {
+            log.LogWarning("No EF Core migrations found — falling back to EnsureCreatedAsync(). Run `dotnet ef migrations add Initial` for production-grade versioned schema.");
+            await db.Database.EnsureCreatedAsync();
+        }
+    }
+
+    if (cfg.GetValue<bool>("Migrations:SeedOnStartup"))
+        await sp.GetRequiredService<SeedService>().RunAsync();
 }
 
 app.Run();

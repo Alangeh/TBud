@@ -4,22 +4,71 @@ Drop-in replacement for the FastAPI/Mongo backend. Same routes, same JSON shapes
 
 ## Stack
 - **.NET 8** Web API (Controllers)
-- **SQL Server** via **Entity Framework Core 8** (Microsoft.EntityFrameworkCore.SqlServer)
-- **EF Core Migrations** for versioned schema
+- **SQL Server** via **Entity Framework Core 8** (`Microsoft.EntityFrameworkCore.SqlServer`)
+- **EF Core Migrations** for versioned schema (with `EnsureCreated` fallback for one-command demos)
 - BCrypt.Net-Next (password hashing)
 - System.IdentityModel.Tokens.Jwt (JWT)
 - DotNetEnv (loads `.env` like python-dotenv)
 
-## Prerequisites
+---
+
+## Quick start — Option A: Docker Compose (no .NET SDK required) ⚡
+
+The easiest way. Spins up SQL Server + the API in one command.
+
+```bash
+cd backend-dotnet
+cp .env.example .env        # edit JWT_SECRET / SA_PASSWORD if you like
+docker compose up --build
+```
+
+What happens:
+1. SQL Server 2022 container boots and waits until healthy.
+2. The API container builds from the local source, connects to SQL Server, applies migrations (if scaffolded) or runs `EnsureCreatedAsync()` as a fallback, then seeds 5 countries / 15 cities / 30 places.
+3. API is live at **http://localhost:8001**.
+
+Stop and wipe the DB volume:
+```bash
+docker compose down -v
+```
+
+---
+
+## Quick start — Option B: Local .NET SDK + SQL Server
+
+### Prerequisites
 - .NET 8 SDK — https://dotnet.microsoft.com/download
 - SQL Server (any of):
-  - SQL Server Developer Edition / Express (Windows)
+  - SQL Server Developer / Express (Windows)
   - Docker: `docker run -e "ACCEPT_EULA=Y" -e "MSSQL_SA_PASSWORD=YourStrong!Passw0rd" -p 1433:1433 -d mcr.microsoft.com/mssql/server:2022-latest`
-  - SQL Server on macOS via Docker as above (works on Apple Silicon with `--platform linux/amd64` or the `azure-sql-edge` image)
+  - macOS: same Docker command (use `mcr.microsoft.com/azure-sql-edge` on Apple Silicon if needed)
 - EF Core CLI tools (one-time): `dotnet tool install --global dotnet-ef`
 
+### Run
+```bash
+cd backend-dotnet
+cp .env.example .env                          # edit JWT_SECRET / CONNECTION_STRING
+dotnet restore
+dotnet ef migrations add Initial              # one-time: scaffold Migrations/  (optional — see below)
+dotnet run                                    # auto-applies migrations + seeds data
+```
+Server listens on `http://0.0.0.0:8001`.
+
+Subsequent schema changes:
+```bash
+dotnet ef migrations add <Name>
+dotnet run                                    # Migrations:ApplyOnStartup=true picks it up
+```
+
+### Migrations vs. EnsureCreated
+- The startup code prefers EF Core Migrations if you've scaffolded them.
+- If no `Migrations/` folder exists, it falls back to `EnsureCreatedAsync()` (controlled by `Migrations:UseEnsureCreatedFallback` in `appsettings.json`, default `true`).
+- Use the fallback for demos/dev; **for production, always scaffold migrations** so schema changes are versioned and reversible.
+
+---
+
 ## Configuration
-Everything is in **`appsettings.json`** — copy/edit the values you need. Real secrets should come from environment variables or User Secrets and override the file.
+Everything lives in **`appsettings.json`** — edit defaults there. Real secrets should come from environment variables or User Secrets and override the file.
 
 ```json
 {
@@ -34,7 +83,11 @@ Everything is in **`appsettings.json`** — copy/edit the values you need. Real 
   },
   "Emergent": { "SessionDataUrl": "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data" },
   "Cors": { "AllowedOrigins": [ "*" ] },
-  "Migrations": { "ApplyOnStartup": true, "SeedOnStartup": true },
+  "Migrations": {
+    "ApplyOnStartup": true,
+    "SeedOnStartup": true,
+    "UseEnsureCreatedFallback": true
+  },
   "Kestrel": { "Endpoints": { "Http": { "Url": "http://0.0.0.0:8001" } } }
 }
 ```
@@ -42,22 +95,9 @@ Everything is in **`appsettings.json`** — copy/edit the values you need. Real 
 Env-var overrides (take priority over `appsettings.json`):
 - `CONNECTION_STRING` — full SQL Server connection string
 - `JWT_SECRET` — 32+ char random string
+- `SA_PASSWORD` — used by docker-compose for the SQL Server container
 
-## First-time setup
-```bash
-cd backend-dotnet
-cp .env.example .env                              # edit JWT_SECRET (and CONNECTION_STRING if needed)
-dotnet restore
-dotnet ef migrations add Initial                  # one-time: scaffold the Migrations/ folder
-dotnet run                                        # auto-applies migrations + seeds data on startup
-```
-Server listens on `http://0.0.0.0:8001`.
-
-Subsequent schema changes:
-```bash
-dotnet ef migrations add <Name>
-dotnet run                                        # Migrations:ApplyOnStartup=true picks it up
-```
+---
 
 ## Endpoints (all under `/api`)
 Auth: `POST /auth/register`, `POST /auth/login`, `POST /auth/google/session`,
@@ -70,18 +110,22 @@ Reviews: `GET /places/{id}/reviews`, `POST /reviews`, `POST /reviews/{id}/helpfu
 
 Users: `GET /users/{id}`, `GET /users/me/reviews`, `POST /users/{id}/follow`
 
-## Auth header
+### Auth header
 `Authorization: Bearer <token>` where `<token>` is either:
 - a JWT issued by `/auth/register` or `/auth/login`, **or**
 - an Emergent `session_token` (Google OAuth path).
 
 Both are accepted transparently — no flag on the frontend.
 
+---
+
 ## Schema notes
 - String PKs (e.g. `usr_xxx`, `c_italy`, `p_eiffel`) preserve the original API's id convention.
-- `email` is uniquely indexed.
-- Collection fields (`countries_visited`, `following`, `photos`, `helpful_voters`) are persisted as JSON in `nvarchar(max)` columns via EF value converters — keeps schema simple and 1:1 with the document model.
-- Sessions don't have a TTL index (SQL Server doesn't support it natively). Expired sessions are filtered on read; add a cleanup job if needed.
+- `email` is uniquely indexed; foreign-key columns (`country_id`, `city_id`, `place_id`, `user_id`) all have non-unique indexes.
+- Collection fields (`countries_visited`, `following`, `photos`, `helpful_voters`) are persisted as JSON in `nvarchar(max)` columns via EF value converters — keeps the schema simple and 1:1 with the document model.
+- Sessions don't use a TTL index (SQL Server doesn't support it natively). Expired sessions are filtered on read; add a cleanup job for production.
+
+---
 
 ## Frontend hookup (local dev)
 In `/frontend/.env`:
@@ -90,7 +134,9 @@ EXPO_PUBLIC_BACKEND_URL=http://<your-LAN-ip>:8001
 ```
 Then `yarn start` in `/frontend`.
 
-## Docker
+---
+
+## Standalone Docker (without compose)
 ```bash
 docker build -t travelreview-api .
 docker run --rm -p 8001:8001 \
@@ -98,12 +144,20 @@ docker run --rm -p 8001:8001 \
   -e JWT_SECRET='replace-me-32+chars' \
   travelreview-api
 ```
-Make sure your `Migrations/` folder is checked in **before** building — the running container applies them on startup.
+
+---
 
 ## Tests (xUnit — 16 cases mirroring the Python pytest suite)
-Requires a running SQL Server reachable from the test process (defaults to the same connection string as the app, but spins up an isolated `TravelReview_Test_<guid>` database per run).
+Requires a running SQL Server reachable from the test process. Each run spins up an isolated `TravelReview_Test_<guid>` database and drops it on completion — production data is never touched.
+
 ```bash
+# Easiest: start SQL Server via docker-compose first, then run tests against it
+docker compose up -d db
 cd tests
 dotnet test
 ```
-Each run drops its test database on completion — production data is never touched.
+
+Override the connection string for tests:
+```bash
+TEST_CONNECTION_STRING='Server=localhost,1433;...' dotnet test
+```

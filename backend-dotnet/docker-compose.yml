@@ -1,0 +1,58 @@
+## TravelReview .NET API + SQL Server — one-command local stack.
+##
+## Usage:
+##   cd backend-dotnet
+##   cp .env.example .env        # edit JWT_SECRET / SA_PASSWORD if you like
+##   docker compose up --build
+##
+## The api container waits for SQL Server to become healthy, then on startup
+## applies EF Core migrations (if scaffolded) or falls back to
+## `EnsureCreatedAsync()` so the schema + seed data are ready out of the box —
+## no need to install the .NET SDK locally.
+##
+## API:        http://localhost:8001
+## SQL Server: localhost:1433  (sa / ${SA_PASSWORD:-YourStrong!Passw0rd})
+##
+## Stop and wipe the database volume:  docker compose down -v
+
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: travelreview-db
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:-YourStrong!Passw0rd}
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      # /opt/mssql-tools18 ships with the 2022 image; -C skips cert validation.
+      test:
+        - "CMD-SHELL"
+        - "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: travelreview-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CONNECTION_STRING: "Server=db,1433;Database=TravelReview;User Id=sa;Password=${SA_PASSWORD:-YourStrong!Passw0rd};TrustServerCertificate=True;MultipleActiveResultSets=true;"
+      JWT_SECRET: ${JWT_SECRET:-travelreview-dev-secret-change-me-please-32chars}
+      ASPNETCORE_URLS: "http://0.0.0.0:8001"
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+volumes:
+  mssql-data:
