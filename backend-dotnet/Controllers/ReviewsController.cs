@@ -97,4 +97,70 @@ public class ReviewsController : ControllerBase
         await _db.SaveChangesAsync(ct);
         return Ok(new { helpful_count = rev.helpful_count, voted });
     }
+
+    [HttpPatch("reviews/{review_id}")]
+    public async Task<IActionResult> Update(string review_id, [FromBody] ReviewUpdateIn body, [FromHeader(Name = "Authorization")] string? authorization, CancellationToken ct)
+    {
+        var user = await _auth.ResolveAsync(authorization, ct);
+        if (user is null) return Unauthorized(new { detail = "Invalid token" });
+        var rev = await _db.Reviews.FirstOrDefaultAsync(r => r.review_id == review_id, ct);
+        if (rev is null) return NotFound(new { detail = "Review not found" });
+        if (rev.user_id != user.user_id) return StatusCode(403, new { detail = "You can only edit your own reviews" });
+
+        bool anyChange = false;
+        if (body.Rating.HasValue) { rev.rating = body.Rating.Value; anyChange = true; }
+        if (body.Text is not null) { rev.text = body.Text.Trim(); anyChange = true; }
+        if (body.Photos is not null) { rev.photos = body.Photos.Take(10).ToList(); anyChange = true; }
+        if (!anyChange) return BadRequest(new { detail = "No fields to update" });
+
+        await _db.SaveChangesAsync(ct);
+
+        if (body.Rating.HasValue)
+        {
+            var place = await _db.Places.FirstOrDefaultAsync(p => p.place_id == rev.place_id, ct);
+            if (place is not null)
+            {
+                var ratings = await _db.Reviews.Where(r => r.place_id == rev.place_id).Select(r => (double)r.rating).ToListAsync(ct);
+                place.rating = ratings.Count == 0 ? 0 : Math.Round(ratings.Average(), 2);
+                place.review_count = ratings.Count;
+                await _db.SaveChangesAsync(ct);
+            }
+        }
+
+        return Ok(new
+        {
+            review = new
+            {
+                rev.review_id, rev.place_id, rev.user_id, rev.rating, rev.text, rev.photos,
+                rev.helpful_count, created_at = rev.created_at.ToString("o"),
+                user_name = user.name, user_picture = user.picture, user_verified = user.verified,
+            }
+        });
+    }
+
+    [HttpDelete("reviews/{review_id}")]
+    public async Task<IActionResult> Delete(string review_id, [FromHeader(Name = "Authorization")] string? authorization, CancellationToken ct)
+    {
+        var user = await _auth.ResolveAsync(authorization, ct);
+        if (user is null) return Unauthorized(new { detail = "Invalid token" });
+        var rev = await _db.Reviews.FirstOrDefaultAsync(r => r.review_id == review_id, ct);
+        if (rev is null) return NotFound(new { detail = "Review not found" });
+        if (rev.user_id != user.user_id) return StatusCode(403, new { detail = "You can only delete your own reviews" });
+
+        var placeId = rev.place_id;
+        _db.Reviews.Remove(rev);
+        user.review_count = Math.Max(0, user.review_count - 1);
+        await _db.SaveChangesAsync(ct);
+
+        var place = await _db.Places.FirstOrDefaultAsync(p => p.place_id == placeId, ct);
+        if (place is not null)
+        {
+            var ratings = await _db.Reviews.Where(r => r.place_id == placeId).Select(r => (double)r.rating).ToListAsync(ct);
+            place.rating = ratings.Count == 0 ? 0 : Math.Round(ratings.Average(), 2);
+            place.review_count = ratings.Count;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        return Ok(new { ok = true, review_id });
+    }
 }

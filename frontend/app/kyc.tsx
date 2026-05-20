@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { api } from '@/src/lib/api';
 import { colors, radii, spacing } from '@/src/constants/theme';
+import { showSuccess, showError } from '@/src/lib/toast';
 
 const TYPES = [
   { id: 'passport', label: 'Passport', icon: 'airplane' as const },
@@ -38,17 +39,16 @@ export default function Kyc() {
   };
 
   const submit = async () => {
-    if (!docType) { Alert.alert('Pick a document type'); return; }
-    if (!photo) { Alert.alert('Upload a photo of your ID'); return; }
+    if (!docType) { showError('Pick a document type'); return; }
+    if (!photo) { showError('Upload a photo of your ID'); return; }
     setBusy(true);
     try {
       const res = await api<{ user: any }>('/auth/kyc', { token, body: { document_type: docType, image_base64: photo } });
       setUser(res.user);
-      Alert.alert('Verified!', 'Your verified badge has been activated.', [
-        { text: 'Continue', onPress: () => router.replace('/(tabs)/explore') }
-      ]);
+      showSuccess('You\'re verified!', 'Your shield badge is now active.');
+      router.replace('/(tabs)/explore');
     } catch (e: any) {
-      Alert.alert('KYC failed', e?.message ?? 'Try again');
+      showError('Verification failed', e?.message ?? 'Try again');
     } finally { setBusy(false); }
   };
 

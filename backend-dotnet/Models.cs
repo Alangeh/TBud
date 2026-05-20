@@ -115,6 +115,7 @@ public record LoginIn([Required, EmailAddress] string Email, [Required] string P
 public record GoogleSessionIn([Required] string Session_token);
 public record KycIn([Required] string Document_type, [Required] string Image_base64);
 public record ReviewIn([Required] string Place_id, [Range(1, 5)] int Rating, [Required, MinLength(1), MaxLength(2000)] string Text, List<string>? Photos);
+public record ReviewUpdateIn([Range(1, 5)] int? Rating, [MaxLength(2000)] string? Text, List<string>? Photos);
 public record ProfileUpdateIn(string? Name, string? Bio);
 
 // ---------- Public response shape ----------

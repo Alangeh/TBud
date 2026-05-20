@@ -399,6 +399,73 @@ async def vote_helpful(review_id: str, authorization: Optional[str] = Header(Non
     return {"helpful_count": fresh["helpful_count"], "voted": voted}
 
 
+class ReviewUpdateIn(BaseModel):
+    rating: Optional[int] = Field(default=None, ge=1, le=5)
+    text: Optional[str] = Field(default=None, min_length=1, max_length=2000)
+    photos: Optional[List[str]] = None
+
+
+async def _recompute_place_rating(place_id: str) -> None:
+    revs = await db.reviews.find({"place_id": place_id}, {"_id": 0, "rating": 1}).to_list(2000)
+    avg = sum(r["rating"] for r in revs) / len(revs) if revs else 0
+    await db.places.update_one(
+        {"place_id": place_id},
+        {"$set": {"rating": round(avg, 2), "review_count": len(revs)}},
+    )
+
+
+@api.patch("/reviews/{review_id}")
+async def update_review(review_id: str, body: ReviewUpdateIn, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    rev = await db.reviews.find_one({"review_id": review_id}, {"_id": 0})
+    if not rev:
+        raise HTTPException(status_code=404, detail="Review not found")
+    if rev["user_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="You can only edit your own reviews")
+
+    updates: dict = {}
+    if body.rating is not None:
+        updates["rating"] = body.rating
+    if body.text is not None:
+        updates["text"] = body.text.strip()
+    if body.photos is not None:
+        updates["photos"] = body.photos[:10]
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    updates["updated_at"] = now_utc()
+
+    await db.reviews.update_one({"review_id": review_id}, {"$set": updates})
+    if "rating" in updates:
+        await _recompute_place_rating(rev["place_id"])
+    fresh = await db.reviews.find_one({"review_id": review_id}, {"_id": 0})
+    if isinstance(fresh.get("created_at"), datetime):
+        fresh["created_at"] = fresh["created_at"].isoformat()
+    if isinstance(fresh.get("updated_at"), datetime):
+        fresh["updated_at"] = fresh["updated_at"].isoformat()
+    fresh["user_name"] = user["name"]
+    fresh["user_picture"] = user.get("picture")
+    fresh["user_verified"] = user.get("verified", False)
+    return {"review": fresh}
+
+
+@api.delete("/reviews/{review_id}")
+async def delete_review(review_id: str, authorization: Optional[str] = Header(None)):
+    user = await get_current_user(authorization)
+    rev = await db.reviews.find_one({"review_id": review_id}, {"_id": 0})
+    if not rev:
+        raise HTTPException(status_code=404, detail="Review not found")
+    if rev["user_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="You can only delete your own reviews")
+
+    await db.reviews.delete_one({"review_id": review_id})
+    await _recompute_place_rating(rev["place_id"])
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$inc": {"review_count": -1}},
+    )
+    return {"ok": True, "review_id": review_id}
+
+
 # ---------- users / social ----------
 @api.get("/users/me/reviews")
 async def my_reviews(authorization: Optional[str] = Header(None)):

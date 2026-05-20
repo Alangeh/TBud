@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { colors, radii, spacing } from '@/src/constants/theme';
 import GoogleButton from '@/src/components/GoogleButton';
+import { showSuccess, showError } from '@/src/lib/toast';
 
 export default function Login() {
   const { login } = useAuth();
@@ -15,13 +16,14 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    if (!email || !password) { Alert.alert('Missing', 'Enter email and password'); return; }
+    if (!email || !password) { showError('Missing fields', 'Enter email and password'); return; }
     setBusy(true);
     try {
-      await login(email.trim(), password);
+      const u = await login(email.trim(), password);
+      showSuccess(`Welcome back, ${u?.name || 'traveler'}!`);
       router.replace('/(tabs)/explore');
     } catch (e: any) {
-      Alert.alert('Login failed', e?.message ?? 'Try again');
+      showError('Login failed', e?.message ?? 'Try again');
     } finally { setBusy(false); }
   };
 

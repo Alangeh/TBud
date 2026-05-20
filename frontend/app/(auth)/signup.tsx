@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { colors, radii, spacing } from '@/src/constants/theme';
 import GoogleButton from '@/src/components/GoogleButton';
+import { showSuccess, showError } from '@/src/lib/toast';
 
 export default function Signup() {
   const { register } = useAuth();
@@ -16,13 +17,14 @@ export default function Signup() {
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    if (!name || !email || password.length < 6) { Alert.alert('Missing', 'Enter name, email and password (min 6 chars)'); return; }
+    if (!name || !email || password.length < 6) { showError('Missing or invalid', 'Enter name, email and 6+ char password'); return; }
     setBusy(true);
     try {
-      await register(email.trim(), password, name.trim());
+      const u = await register(email.trim(), password, name.trim());
+      showSuccess(`Welcome, ${u.name}!`, 'One more step — verify your identity.');
       router.replace('/kyc');
     } catch (e: any) {
-      Alert.alert('Signup failed', e?.message ?? 'Try again');
+      showError('Signup failed', e?.message ?? 'Try again');
     } finally { setBusy(false); }
   };
 

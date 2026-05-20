@@ -7,9 +7,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { api } from '@/src/lib/api';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { colors, radii, spacing } from '@/src/constants/theme';
+import { showSuccess, showError } from '@/src/lib/toast';
 
 export default function WriteReview() {
-  const { placeId } = useLocalSearchParams<{ placeId: string }>();
+  const { placeId, reviewId } = useLocalSearchParams<{ placeId: string; reviewId?: string }>();
+  const isEdit = !!reviewId;
   const router = useRouter();
   const { token, user } = useAuth();
   const [place, setPlace] = useState<any>(null);
@@ -17,15 +19,30 @@ export default function WriteReview() {
   const [text, setText] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(isEdit);
 
   useEffect(() => {
     (async () => {
       try {
         const p = await api<{ place: any }>(`/places/${placeId}`);
         setPlace(p.place);
-      } catch {}
+        if (isEdit && reviewId) {
+          // Find the existing review to pre-fill
+          const r = await api<{ reviews: any[] }>(`/places/${placeId}/reviews`);
+          const mine = r.reviews.find(x => x.review_id === reviewId);
+          if (mine) {
+            setRating(mine.rating);
+            setText(mine.text);
+            setPhotos(mine.photos || []);
+          }
+        }
+      } catch (e: any) {
+        showError('Could not load review', e?.message);
+      } finally {
+        setLoading(false);
+      }
     })();
-  }, [placeId]);
+  }, [placeId, reviewId, isEdit]);
 
   const addPhoto = async () => {
     if (photos.length >= 10) { Alert.alert('Limit', 'Max 10 photos'); return; }
@@ -42,18 +59,55 @@ export default function WriteReview() {
   };
 
   const submit = async () => {
-    if (rating === 0) { Alert.alert('Pick a star rating'); return; }
-    if (text.trim().length < 5) { Alert.alert('Write a bit more', 'Reviews should be at least 5 characters.'); return; }
+    if (rating === 0) { showError('Pick a star rating'); return; }
+    if (text.trim().length < 5) { showError('Write a bit more', 'Reviews should be at least 5 characters.'); return; }
     setBusy(true);
     try {
-      await api('/reviews', { token, body: { place_id: placeId, rating, text: text.trim(), photos } });
-      Alert.alert('Review posted!', 'Thanks for contributing.', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
+      if (isEdit && reviewId) {
+        await api(`/reviews/${reviewId}`, { token, method: 'PATCH', body: { rating, text: text.trim(), photos } });
+        showSuccess('Review updated', 'Your changes are live.');
+      } else {
+        await api('/reviews', { token, body: { place_id: placeId, rating, text: text.trim(), photos } });
+        showSuccess('Review posted!', 'Thanks for contributing.');
+      }
+      router.back();
     } catch (e: any) {
-      Alert.alert('Failed', e?.message ?? 'Try again');
+      showError(isEdit ? 'Update failed' : 'Post failed', e?.message ?? 'Try again');
     } finally { setBusy(false); }
   };
+
+  const onDelete = () => {
+    if (!isEdit || !reviewId) return;
+    Alert.alert(
+      'Delete review?',
+      'This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await api(`/reviews/${reviewId}`, { token, method: 'DELETE' });
+              showSuccess('Review deleted');
+              router.back();
+            } catch (e: any) {
+              showError('Delete failed', e?.message ?? 'Try again');
+            } finally { setBusy(false); }
+          },
+        },
+      ],
+    );
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.safe, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color={colors.accent} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -62,8 +116,14 @@ export default function WriteReview() {
           <TouchableOpacity testID="close-btn" onPress={() => router.back()}>
             <Ionicons name="close" size={26} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Write a review</Text>
-          <View style={{ width: 26 }} />
+          <Text style={styles.headerTitle}>{isEdit ? 'Edit review' : 'Write a review'}</Text>
+          {isEdit ? (
+            <TouchableOpacity testID="delete-btn" onPress={onDelete} hitSlop={10}>
+              <Ionicons name="trash-outline" size={22} color={colors.danger || '#D7263D'} />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 26 }} />
+          )}
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" testID="write-review-screen">
@@ -120,8 +180,13 @@ export default function WriteReview() {
             </View>
           )}
 
-          <TouchableOpacity testID="review-submit" onPress={submit} style={[styles.primary, (rating === 0 || text.length < 5) && { opacity: 0.5 }]} disabled={busy || rating === 0 || text.length < 5}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Post review</Text>}
+          <TouchableOpacity
+            testID="review-submit"
+            onPress={submit}
+            style={[styles.primary, (rating === 0 || text.length < 5) && { opacity: 0.5 }]}
+            disabled={busy || rating === 0 || text.length < 5}
+          >
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{isEdit ? 'Save changes' : 'Post review'}</Text>}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>

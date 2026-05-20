@@ -3,6 +3,7 @@ import { AuthProvider } from '@/src/contexts/AuthContext';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Toast from 'react-native-toast-message';
 
 export default function RootLayout() {
   return (
@@ -20,6 +21,7 @@ export default function RootLayout() {
             <Stack.Screen name="write-review/[placeId]" options={{ presentation: 'modal' }} />
             <Stack.Screen name="kyc" options={{ presentation: 'modal' }} />
           </Stack>
+          <Toast />
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

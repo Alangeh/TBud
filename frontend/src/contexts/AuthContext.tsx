@@ -20,9 +20,9 @@ type AuthState = {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
-  googleSession: (sessionToken: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
+  register: (email: string, password: string, name: string) => Promise<User>;
+  googleSession: (sessionToken: string) => Promise<User>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   setUser: (u: User) => void;
@@ -64,18 +64,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await api<{ token: string; user: User }>('/auth/login', { body: { email, password } });
     await persistToken(res.token);
     setUserState(res.user);
+    return res.user;
   };
 
   const register = async (email: string, password: string, name: string) => {
     const res = await api<{ token: string; user: User }>('/auth/register', { body: { email, password, name } });
     await persistToken(res.token);
     setUserState(res.user);
+    return res.user;
   };
 
   const googleSession = async (sessionToken: string) => {
     const res = await api<{ token: string; user: User }>('/auth/google/session', { body: { session_token: sessionToken } });
     await persistToken(res.token);
     setUserState(res.user);
+    return res.user;
   };
 
   const logout = async () => {

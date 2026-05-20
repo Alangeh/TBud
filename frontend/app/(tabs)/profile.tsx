@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { api } from '@/src/lib/api';
 import { colors, radii, spacing } from '@/src/constants/theme';
+import { showSuccess, showError } from '@/src/lib/toast';
 
 type Review = { review_id: string; place_id: string; place_name?: string; place_image?: string; rating: number; text: string; created_at: string };
 
@@ -30,8 +31,36 @@ export default function Profile() {
   const onLogout = () => {
     Alert.alert('Sign out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: async () => { await logout(); router.replace('/(auth)/welcome'); } }
+      { text: 'Sign out', style: 'destructive', onPress: async () => { await logout(); showSuccess('Signed out'); router.replace('/(auth)/welcome'); } }
     ]);
+  };
+
+  const editReview = (r: Review) => {
+    router.push({ pathname: `/write-review/${r.place_id}`, params: { reviewId: r.review_id } });
+  };
+
+  const deleteReview = (r: Review) => {
+    Alert.alert(
+      'Delete review?',
+      'This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api(`/reviews/${r.review_id}`, { token, method: 'DELETE' });
+              showSuccess('Review deleted');
+              setReviews(rs => rs.filter(x => x.review_id !== r.review_id));
+              load();
+            } catch (e: any) {
+              showError('Delete failed', e?.message);
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -101,18 +130,28 @@ export default function Profile() {
         ) : (
           <View style={{ gap: 12 }}>
             {reviews.map(r => (
-              <TouchableOpacity key={r.review_id} testID={`my-review-${r.review_id}`} style={styles.reviewCard} onPress={() => router.push(`/place/${r.place_id}`)}>
-                {r.place_image && <Image source={{ uri: r.place_image }} style={styles.reviewImg} />}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.reviewPlace}>{r.place_name}</Text>
-                  <View style={{ flexDirection: 'row', gap: 2, marginVertical: 4 }}>
-                    {[1, 2, 3, 4, 5].map(i => (
-                      <Ionicons key={i} name={i <= r.rating ? 'star' : 'star-outline'} size={12} color={colors.star} />
-                    ))}
+              <View key={r.review_id} style={styles.reviewCard} testID={`my-review-${r.review_id}`}>
+                <TouchableOpacity style={{ flexDirection: 'row', gap: 12, flex: 1 }} onPress={() => router.push(`/place/${r.place_id}`)}>
+                  {r.place_image && <Image source={{ uri: r.place_image }} style={styles.reviewImg} />}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reviewPlace}>{r.place_name}</Text>
+                    <View style={{ flexDirection: 'row', gap: 2, marginVertical: 4 }}>
+                      {[1, 2, 3, 4, 5].map(i => (
+                        <Ionicons key={i} name={i <= r.rating ? 'star' : 'star-outline'} size={12} color={colors.star} />
+                      ))}
+                    </View>
+                    <Text numberOfLines={2} style={styles.reviewText}>{r.text}</Text>
                   </View>
-                  <Text numberOfLines={2} style={styles.reviewText}>{r.text}</Text>
+                </TouchableOpacity>
+                <View style={styles.reviewActions}>
+                  <TouchableOpacity testID={`edit-my-${r.review_id}`} onPress={() => editReview(r)} hitSlop={8} style={styles.actionBtn}>
+                    <Ionicons name="pencil-outline" size={16} color={colors.textMuted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity testID={`delete-my-${r.review_id}`} onPress={() => deleteReview(r)} hitSlop={8} style={styles.actionBtn}>
+                    <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))}
           </View>
         )}
@@ -144,7 +183,9 @@ const styles = StyleSheet.create({
   emptyText: { color: colors.textMuted, fontSize: 14, textAlign: 'center', paddingHorizontal: spacing.lg },
   cta: { backgroundColor: colors.accent, paddingHorizontal: 24, paddingVertical: 12, borderRadius: radii.pill, marginTop: 4 },
   ctaText: { color: '#fff', fontWeight: '700' },
-  reviewCard: { flexDirection: 'row', gap: 12, backgroundColor: colors.card, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
+  reviewCard: { flexDirection: 'row', gap: 12, backgroundColor: colors.card, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+  reviewActions: { flexDirection: 'column', gap: 8, alignItems: 'center' },
+  actionBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgAlt },
   reviewImg: { width: 64, height: 64, borderRadius: 10 },
   reviewPlace: { fontSize: 15, fontWeight: '700', color: colors.text },
   reviewText: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
