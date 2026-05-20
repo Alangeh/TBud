@@ -22,6 +22,7 @@ builder.Services.AddControllers().AddJsonOptions(o => {
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<SeedService>();
+builder.Services.AddScoped<HydrationService>();
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "*" };
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => {
@@ -64,6 +65,24 @@ using (var scope = app.Services.CreateScope())
 
     if (cfg.GetValue<bool>("Migrations:SeedOnStartup"))
         await sp.GetRequiredService<SeedService>().RunAsync();
+}
+
+// Kick off dynamic data hydration in the background so the server is responsive
+// immediately. Idempotent — only runs the first time (state tracked in DB).
+if (app.Configuration.GetValue<bool>("Hydration:RunOnStartup", true))
+{
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<HydrationService>().RunAsync();
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogError(ex, "Background hydration failed");
+        }
+    });
 }
 
 app.Run();

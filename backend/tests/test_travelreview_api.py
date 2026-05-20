@@ -23,7 +23,9 @@ def s():
 def test_countries(s):
     r = s.get(f"{API}/countries"); assert r.status_code == 200
     items = r.json()["countries"]
-    assert len(items) == 5
+    # We seed 5 curated countries and hydrate up to 115 more from REST Countries.
+    # In CI before hydration completes, only the 5 curated may be present.
+    assert len(items) >= 5
     assert all("_id" not in c for c in items)
     assert {c["country_id"] for c in items} >= {"c_italy", "c_japan", "c_france", "c_thailand", "c_peru"}
 

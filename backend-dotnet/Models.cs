@@ -94,6 +94,21 @@ public class ReviewDoc
     public DateTime created_at { get; set; } = DateTime.UtcNow;
 }
 
+// Hydration state tracking — single-row pattern (key="v1").
+public class HydrationStateDoc
+{
+    [Key, MaxLength(20)] public string key { get; set; } = "v1";
+    [MaxLength(20)] public string status { get; set; } = "idle";  // idle|running|completed|failed
+    public DateTime? started_at { get; set; }
+    public DateTime? completed_at { get; set; }
+    public DateTime? failed_at { get; set; }
+    public int countries_inserted { get; set; }
+    public int cities_inserted { get; set; }
+    public double duration_seconds { get; set; }
+    [MaxLength(2000)] public string? error { get; set; }
+    public string? errors_json { get; set; }   // serialized List<string>
+}
+
 // ---------- Request DTOs ----------
 public record RegisterIn([Required, EmailAddress] string Email, [Required, MinLength(6)] string Password, [Required] string Name);
 public record LoginIn([Required, EmailAddress] string Email, [Required] string Password);

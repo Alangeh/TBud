@@ -7,6 +7,7 @@ Endpoints:
            /api/cities/{id}/places, /api/places/{id}, /api/search
   Reviews: /api/places/{id}/reviews, /api/reviews, /api/reviews/{id}/helpful
   Social:  /api/users/{id}, /api/users/{id}/follow
+  Admin:   /api/admin/hydration-status, /api/admin/refresh-data
 """
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Request
 from dotenv import load_dotenv
@@ -16,12 +17,15 @@ from pydantic import BaseModel, EmailStr, Field
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
+import asyncio
 import os
 import uuid
 import logging
 import bcrypt
 import jwt
 import httpx
+
+from hydration import hydrate as run_hydration, get_status as hydration_status
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -563,6 +567,32 @@ async def root():
     return {"service": "TravelReview", "status": "ok"}
 
 
+# ---------- admin ----------
+def _check_admin(authorization: Optional[str]) -> None:
+    admin_token = (os.environ.get("ADMIN_TOKEN") or "").strip()
+    if not admin_token:
+        raise HTTPException(status_code=503, detail="ADMIN_TOKEN not configured")
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing admin bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    if token != admin_token:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+
+
+@api.get("/admin/hydration-status")
+async def get_hydration_status():
+    """Public-readable lightweight status of the dynamic data hydration job."""
+    return await hydration_status(db)
+
+
+@api.post("/admin/refresh-data")
+async def refresh_data(authorization: Optional[str] = Header(None)):
+    """Force re-run of dynamic data hydration (REST Countries + GeoDB Cities).
+    Existing countries/cities are kept; only missing ones are added."""
+    _check_admin(authorization)
+    return await run_hydration(db, force=True)
+
+
 app.include_router(api)
 app.add_middleware(
     CORSMiddleware,
@@ -577,6 +607,17 @@ app.add_middleware(
 async def startup():
     await ensure_indexes()
     await seed_data()
+    # Kick off dynamic hydration in the background so the server is responsive
+    # immediately. Idempotent — only runs the first time.
+    if (os.environ.get("HYDRATION_ENABLED") or "true").lower() != "false":
+        asyncio.create_task(_run_hydration_safely())
+
+
+async def _run_hydration_safely():
+    try:
+        await run_hydration(db)
+    except Exception:
+        log.exception("Background hydration failed")
 
 
 @app.on_event("shutdown")

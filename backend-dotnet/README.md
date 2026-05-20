@@ -110,6 +110,36 @@ Reviews: `GET /places/{id}/reviews`, `POST /reviews`, `POST /reviews/{id}/helpfu
 
 Users: `GET /users/{id}`, `GET /users/me/reviews`, `POST /users/{id}/follow`
 
+Admin: `GET /admin/hydration-status`, `POST /admin/refresh-data` (Bearer `ADMIN_TOKEN`)
+
+---
+
+## Dynamic data hydration 🌍
+On first startup the API auto-populates a rich, global dataset from public REST APIs (mirrors `backend/hydration.py`):
+
+| Layer | Source | Key? |
+|---|---|---|
+| **Top 120 countries** (by population) | [REST Countries v3.1](https://restcountries.com) | ❌ |
+| **Capital city** per country (guaranteed fallback) | REST Countries `capital` field | ❌ |
+| **Top 3 cities** per country (when available) | [GeoDB Cities (RapidAPI)](https://rapidapi.com/wirefreethought/api/geodb-cities) | ✅ `RAPIDAPI_KEY` |
+| **City thumbnails** | Wikipedia REST API summary | ❌ |
+
+The 5 curated demo countries (Italy/Japan/France/Thailand/Peru) plus 30 hand-picked places stay seeded so reviews and the existing UX still work.
+
+Hydration runs **in the background** after startup — the API serves the curated seed immediately while dynamic data streams in. State is tracked in the `HydrationState` table so restarts skip already-done work.
+
+**Force a re-sync:**
+```bash
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8001/api/admin/refresh-data
+```
+
+**Check status:**
+```bash
+curl http://localhost:8001/api/admin/hydration-status
+```
+
+**GeoDB requires a one-click subscribe:** if you set `RAPIDAPI_KEY` but get a 403 `"Not subscribed"` error in the logs, visit https://rapidapi.com/wirefreethought/api/geodb-cities/ → click **"Subscribe to Test"** → Basic / free plan. The capital-city fallback always populates regardless.
+
 ### Auth header
 `Authorization: Bearer <token>` where `<token>` is either:
 - a JWT issued by `/auth/register` or `/auth/login`, **or**

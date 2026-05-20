@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<CityDoc> Cities => Set<CityDoc>();
     public DbSet<PlaceDoc> Places => Set<PlaceDoc>();
     public DbSet<ReviewDoc> Reviews => Set<ReviewDoc>();
+    public DbSet<HydrationStateDoc> HydrationState => Set<HydrationStateDoc>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {

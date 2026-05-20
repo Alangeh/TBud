@@ -48,6 +48,8 @@ services:
     environment:
       CONNECTION_STRING: "Server=db,1433;Database=TravelReview;User Id=sa;Password=${SA_PASSWORD:-YourStrong!Passw0rd};TrustServerCertificate=True;MultipleActiveResultSets=true;"
       JWT_SECRET: ${JWT_SECRET:-travelreview-dev-secret-change-me-please-32chars}
+      RAPIDAPI_KEY: ${RAPIDAPI_KEY:-}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-travelreview-admin-secret-change-me}
       ASPNETCORE_URLS: "http://0.0.0.0:8001"
       ASPNETCORE_ENVIRONMENT: Development
     ports:
